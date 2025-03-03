@@ -16,14 +16,65 @@ class Company(Base):
     name = Column(String())
     founding_year = Column(Integer())
 
+    freebies = relationship('Freebie', back_populates='company', overlaps="devs")
+    devs = relationship('Dev', secondary='freebies', back_populates='companies', overlaps="freebies")
+
     def __repr__(self):
         return f'<Company {self.name}>'
+
+    def give_freebie(self, session, dev, item_name, value):
+        """Give a freebie to a developer."""
+        freebie = Freebie(dev_id=dev.id, company_id=self.id, item_name=item_name, value=value)
+        session.add(freebie)
+        session.commit()
+
+    @classmethod
+    def oldest_company(cls, session):
+        """Return the oldest company based on the founding year."""
+        return session.query(cls).order_by(cls.founding_year).first()
+
 
 class Dev(Base):
     __tablename__ = 'devs'
 
     id = Column(Integer(), primary_key=True)
-    name= Column(String())
+    name = Column(String())
+
+    freebies = relationship('Freebie', back_populates='dev', overlaps="companies")
+    companies = relationship('Company', secondary='freebies', back_populates='devs', overlaps="freebies")
 
     def __repr__(self):
         return f'<Dev {self.name}>'
+
+    def received_one(self, item_name):
+        """Check if a developer has received a freebie with the given item name."""
+        return any(freebie.item_name == item_name for freebie in self.freebies)
+
+    def give_away(self, dev, freebie, session):
+        """Give away a freebie to another developer."""
+        if freebie.dev == self:
+            freebie.dev = dev
+            session.commit()
+        else:
+            raise ValueError("You cannot give away a freebie that doesn't belong to you.")
+
+
+class Freebie(Base):
+    __tablename__ = 'freebies'
+
+    id = Column(Integer(), primary_key=True)
+    item_name = Column(String())
+    value = Column(Integer())
+
+    dev_id = Column(Integer, ForeignKey('devs.id'))
+    company_id = Column(Integer, ForeignKey('companies.id'))
+
+    dev = relationship('Dev', back_populates='freebies')
+    company = relationship('Company', back_populates='freebies')
+
+    def __repr__(self):
+        return f'<Freebie {self.item_name}, {self.value}>'
+
+    def print_details(self):
+        """Return a formatted string with details of the freebie."""
+        return f'{self.dev.name} owns a {self.item_name} from {self.company.name}'
